@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260305.1541>
+//  Last Modified : <260306.1106>
 //
 //  Description	
 //
@@ -110,7 +110,16 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::gotSNIP()
 void NetworkHealthScan::BrowseHandleFlow::browseCallback_(openlcb::NodeID nodeid)
 {
     LOG(INFO,"[NetworkHealthScan::BrowseHandleFlow] browseCallback_(0x%012lX)",nodeid);
-    //LOG(INFO,"[NetworkHealthScan] browseCallback_(), currentState_ is %d",currentState_);
+    if (nodeid == node_->node_id()) 
+    {
+        if (parent_->CurrentState() == Init && !busy_)
+        {
+            parent_->ScanNetwork();
+        }
+        //if (!busy_) notify();
+        return; // skip ourself
+    }
+    //LOG(INFO,"[NetworkHealthScan] browseCallback_(), currentState_ is %d",(int)currentState_);
     auto found = parent_->NodeDB_Find(nodeid);
     if (found == parent_->NodeDB_End())
     {
@@ -229,6 +238,19 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::startSNI
     return wait_and_call(STATE(gotSNIP));
 }
 
+static std::string HexDumpPayload(openlcb::Payload p)
+{
+    std::string result;
+    char buffer[8];
+    for (unsigned i = 0; i < p.size(); i++)
+    {
+        snprintf(buffer,sizeof(buffer),"0x%02x ",p[i]);
+        result += buffer;
+    }
+    return result;
+}
+
+
 StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP()
 {
     string manufacturer("");
@@ -241,11 +263,13 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP(
     GetSNIP *m = message()->data();
     LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): buffer_->data()->resultCode is %d",buffer_->data()->resultCode);
     openlcb::Payload p = buffer_->data()->response;
-    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): p = %s",p.c_str());
+    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): p = %s",HexDumpPayload(p).c_str());
     uint8_t version = p[index++];
+    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): version(1) = %d",version);
     for (size_t i=0; i<version; i++)
     {
         char c = p[index++];
+        //LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): c(1) = '%c'",c);
         while (c != '\0')
         {
             switch (i)
@@ -267,7 +291,7 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP(
         }
     }
     version = p[index++];
-    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): version = %d",version);
+    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): version(2) = %d",version);
     for (size_t i=0; i<version; i++)
     {
         char c = p[index++];

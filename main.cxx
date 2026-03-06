@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260306.0750>
+//  Last Modified : <260306.0948>
 //
 //  Description	
 //
@@ -235,7 +235,7 @@ int appl_main(int argc, char *argv[])
           healthScan(stack.node(),
                      stack.service(),
                      stack.executor()->active_timers());
-    healthScan.ScanNetwork();
+    //healthScan.ScanNetwork();
     // Start the stack in the background using it's own task.
     stack.loop_executor();
     // At this point the OpenMRN stack is running in it's own task and we can

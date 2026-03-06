@@ -13,6 +13,6 @@ APP_PATH ?= $(realpath ../..)
 -include ../../config.mk
 INCLUDES += $(shell pkg-config --cflags libxml++-2.6)
 include $(OPENMRNPATH)/etc/prog.mk
-SYSLIBRARIES += $(shell pkg-config --libs libxml++-2.6) 
+SYSLIBRARIES += $(shell pkg-config --libs libxml++-2.6) -lcsv
 
 
