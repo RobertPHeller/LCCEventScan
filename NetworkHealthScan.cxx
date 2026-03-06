@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260306.1106>
+//  Last Modified : <260306.1216>
 //
 //  Description	
 //
@@ -230,11 +230,12 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::entry()
 StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::startSNIP()
 {
     LOG(INFO,"[NetworkHealthScan::BrowseHandleFlow::SNIPProcess::startSNIP()]");
-    buffer_ = get_allocation_result(&client_);
     GetSNIP *m = message()->data();
+    buffer_ = client_.alloc(); //get_allocation_result(&client_);
     buffer_->data()->reset(m->src,m->dst);
     buffer_->data()->done.reset(this);
     client_.send(buffer_);
+    LOG(INFO,"[NetworkHealthScan::BrowseHandleFlow::SNIPProcess::startSNIP(): client_.send() called.");
     return wait_and_call(STATE(gotSNIP));
 }
 
