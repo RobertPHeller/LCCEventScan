@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260306.1216>
+//  Last Modified : <260306.1545>
 //
 //  Description	
 //
@@ -254,6 +254,8 @@ static std::string HexDumpPayload(openlcb::Payload p)
 
 StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP()
 {
+    openlcb::Payload p = buffer_->data()->response;
+    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): p = %s",HexDumpPayload(p).c_str());
     string manufacturer("");
     string model("");
     string softwareVersion("");
@@ -261,10 +263,7 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP(
     string name("");
     string description("");
     size_t index = 0;
-    GetSNIP *m = message()->data();
     LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): buffer_->data()->resultCode is %d",buffer_->data()->resultCode);
-    openlcb::Payload p = buffer_->data()->response;
-    LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): p = %s",HexDumpPayload(p).c_str());
     uint8_t version = p[index++];
     LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): version(1) = %d",version);
     for (size_t i=0; i<version; i++)
@@ -310,6 +309,7 @@ StateFlowBase::Action NetworkHealthScan::BrowseHandleFlow::SNIPProcess::gotSNIP(
             c = p[index++];
         }
     }
+    GetSNIP *m = message()->data();
     LOG(INFO,"[NetworkHealthScan] SNIPProcess::gotSNIP(): 0X%012lX: manufacturer is '%s', model = '%s', softwareVersion = '%s', hardwareVersion = '%s', name = '%s', description = '%s'",m->dst.id,manufacturer.c_str(),model.c_str(),softwareVersion.c_str(),hardwareVersion.c_str(),name.c_str(),description.c_str());
     parent_->insertDB(m->dst.id,
                       NetworkNodeDatabaseEntry(m->dst.id,manufacturer,
