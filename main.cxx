@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260306.0948>
+//  Last Modified : <260307.1512>
 //
 //  Description	
 //
@@ -57,7 +57,7 @@ static const char rcsid[] = "@(#) : $Id$";
 #include <termios.h>
 #include <sys/ioctl.h>
 
-#include "NetworkHealthScan.hxx"
+#include "NetworkEventScan.hxx"
 
 // Changes the default behavior by adding a newline after each gridconnect
 // packet. Makes it easier for debugging the raw device.
@@ -209,6 +209,9 @@ int appl_main(int argc, char *argv[])
 {
     // Parse command line.
     parse_args(argc, argv);
+    if (optind >= argc) {
+        LOG(FATAL,"Missing output filename");
+    }
     openlcb::SimpleCanStack stack(NODE_ID);
     bool isconnected = false;
     
@@ -231,10 +234,11 @@ int appl_main(int argc, char *argv[])
     {
         LOG(FATAL,"Not connected to a CAN network!");
     }
-    NetworkHealthScan::NetworkHealthScan 
+    NetworkEventScan::NetworkEventScan 
           healthScan(stack.node(),
                      stack.service(),
-                     stack.executor()->active_timers());
+                     stack.memory_config_handler(),
+                     argv[optind]);
     //healthScan.ScanNetwork();
     // Start the stack in the background using it's own task.
     stack.loop_executor();

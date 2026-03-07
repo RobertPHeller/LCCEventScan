@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260305.1531>
+//  Last Modified : <260307.1524>
 //
 //  Description	
 //
@@ -53,6 +53,8 @@
 #include "executor/Notifiable.hxx"
 #include "openlcb/NodeBrowser.hxx"
 #include "openlcb/SNIPClient.hxx"
+#include "openlcb/PIPClient.hxx"
+#include "openlcb/MemoryConfigClient.hxx"
 #include <stdio.h>
 #include <stdlib.h>
 #include "utils/logging.h"
@@ -60,8 +62,9 @@
 #include <map>
 #include <algorithm>
 #include <functional>
+#include <csv.h>
 
-namespace NetworkHealthScan
+namespace NetworkEventScan
 {
 struct NetworkNodeDatabaseEntry {
     typedef enum {Missing=0, Found, New} Status_t;
@@ -106,40 +109,54 @@ struct NetworkNodeDatabaseEntry {
 
 
 
-class NetworkHealthScan : public Timer
+class NetworkEventScan : public StateFlowBase
 {
 private:
 public:
-    NetworkHealthScan(openlcb::Node *node, Service *service, 
-                      ActiveTimers *timers)
-                : Timer(timers)
-          , node_(node)
-          , service_(service)
-          , browsehandleflow_(node,service,this)
-          , needWriteDB_(false)
-          , currentState_(Init)
-          , added_(0)
-          , missing_(0)
-          , found_(0)
-    {
-        ReadDB_();
-    }
-    openlcb::MemorySpace *NodeDBSpace()
-    {
-        return new openlcb::ROFileMemorySpace(NODEDB);
-    }
-    ~NetworkHealthScan() 
+    NetworkEventScan(openlcb::Node *node, Service *service, 
+                     openlcb::MemoryConfigHandler *memCfgHandler,
+                     const char *filename)
+          : StateFlowBase(service)
+          , timer_(this)
+    , node_(node)
+    , service_(service)
+    , browsehandleflow_(node,service,this)
+    , memClient_(node,memCfgHandler)
+    , filename_(filename)
+    , currentState_(Init)
+    , added_(0)
+    , missing_(0)
+    , found_(0)
     {
     }
-    virtual void notify() override {} // empty norify for now.
-    void ResetNodeDB();
-    void ScanNetwork();
+    ~NetworkEventScan() 
+    {
+    }
+    void ScanNetwork()
+    {
+#ifdef DEBUG
+        LOG(INFO,"[NetworkEventScan] ScanNetwork()");
+#endif
+        start_flow(STATE(entry));
+    }
+    virtual Action entry();
+    Action node_loop_start();
+    Action start_load_CDI();
     typedef std::map<openlcb::NodeID,NetworkNodeDatabaseEntry> NodeDB_t;
     typedef NodeDB_t::const_iterator NodeDB_ConstIterator;
     typedef NodeDB_t::iterator NodeDB_Iterator;
     NodeDB_ConstIterator NodeDB_Begin() const {return NodeDB_.begin();}
     NodeDB_ConstIterator NodeDB_End() const {return NodeDB_.end();}
     NodeDB_Iterator NodeDB_Find(openlcb::NodeID nodeid) {return NodeDB_.find(nodeid);}
+    void NodeDB_Remove(openlcb::NodeID nodeid)
+    {
+        auto found = NodeDB_.find(nodeid);
+        if (found != NodeDB_.end())
+        {
+            NodeDB_.erase(found);
+        }
+    }
+    NodeDB_ConstIterator currentNode_;
     typedef enum {Init=0, Scanning, ScanComplete} ScanState_t;
     ScanState_t CurrentState() const {return currentState_;}
     size_t Total() const {return NodeDB_.size();}
@@ -151,19 +168,16 @@ public:
         NodeDB_.insert(std::make_pair(nid,entry));
     }
 private:
-    static constexpr const char NODEDB[] = "/sdcard/nodedb";
     static constexpr const long long BROWSETIMEOUT = MSEC_TO_NSEC(20000);
     NodeDB_t NodeDB_;
-    void ReadDB_();
-    void WriteDB_();
-    long long timeout() override;
+    StateFlowTimer timer_;
     openlcb::Node *node_;
     Service *service_;
     class BrowseHandleFlow : public StateFlowBase
     {
     public:
         BrowseHandleFlow(openlcb::Node *node, Service *service,
-                         NetworkHealthScan *parent)
+                         NetworkEventScan *parent)
                     : StateFlowBase(service)
               , node_(node)
               , parent_(parent)
@@ -171,20 +185,24 @@ private:
               , browser_(node, std::bind(&BrowseHandleFlow::browseCallback_, 
                                          this,std::placeholders::_1))
               , snipProcess_(service, parent, &busy_)
+              , pipClient_(node->iface())
         {
             start_flow(STATE(entry));
         }
         virtual void notify() override
         {
+#ifdef DEBUG
             LOG(INFO,"[BrowseHandleFlow] notify()");
+#endif
             StateFlowBase::notify();
         }
         void refresh() {browser_.refresh();}
     private:
         void browseCallback_(openlcb::NodeID nodeid);
         openlcb::Node *node_;
-        NetworkHealthScan *parent_;
+        NetworkEventScan *parent_;
         bool busy_;
+        openlcb::NodeID nodeid_;
         openlcb::NodeBrowser browser_;
         struct PendingNodeID : public QMember
         {
@@ -204,11 +222,11 @@ private:
                 this->dst = dst;
             }
         };
-        typedef StateFlow<Buffer<GetSNIP>, QList<1>> SNIPProcessBase;
+        typedef StateFlow<Buffer<GetSNIP>, QList<4>> SNIPProcessBase;
         class SNIPProcess : public SNIPProcessBase
         {
         public:
-            SNIPProcess(Service *service, NetworkHealthScan *parent, 
+            SNIPProcess(Service *service, NetworkEventScan *parent, 
                         bool *busy)
                         : SNIPProcessBase(service)
                   , client_(service)
@@ -223,13 +241,15 @@ private:
 #if 0
             virtual void notify() override
             {
-                LOG(INFO,"[NetworkHealthScan] SNIPProcess::notify()");
+#ifdef DEBUG
+                LOG(INFO,"[NetworkEventScan] SNIPProcess::notify()");
+#endif
                 SNIPProcessBase::notify();
             }
 #endif
         private:
             openlcb::SNIPClient client_;
-            NetworkHealthScan *parent_;
+            NetworkEventScan *parent_;
             bool *busy_;
             Buffer<openlcb::SNIPClientRequest> *buffer_;
             virtual Action entry();
@@ -245,7 +265,9 @@ private:
             void SNIPAsync(SNIPProcess *flow,openlcb::Node *src, 
                            openlcb::NodeHandle dst, Notifiable *done)
             {
-                LOG(INFO,"[NetworkHealthScan::BrowseHandleFlow::SNIPHelper] SNIPAsync()");
+#ifdef DEBUG
+                LOG(INFO,"[NetworkEventScan::BrowseHandleFlow::SNIPHelper] SNIPAsync()");
+#endif
                 done_.reset(done);
                 src_ = src;
                 dst_ = dst;
@@ -259,7 +281,9 @@ private:
             // Callback from the allocator.
             void alloc_result(QMember *entry) override
             {
-                LOG(INFO,"[NetworkHealthScan::BrowseHandleFlow::SNIPHelper] alloc_result()");
+#ifdef DEBUG
+                LOG(INFO,"[NetworkEventScan::BrowseHandleFlow::SNIPHelper] alloc_result()");
+#endif
                 Buffer<GetSNIP> *b = flow_->cast_alloc(entry);
                 b->data()->reset(src_,dst_);
                 b->set_done(&done_);
@@ -273,12 +297,27 @@ private:
         };
         SNIPProcess snipProcess_;
         SNIPHelper snipHelper;
+        openlcb::PIPClient pipClient_;
         virtual Action entry();
         Action gotSNIP();
+        Action gotPIP();
     };
+    static const char * headings_[10];
+    static constexpr size_t NUM_COLUMNS = (sizeof(headings_) / sizeof(headings_[0]));;
+    void writeHeadings_()
+    {
+        for (size_t i=0;i < NUM_COLUMNS; i++)
+        {
+            if (i > 0) fputc(',',outfp_);
+            csv_fwrite(outfp_,headings_[i],strlen(headings_[i]));
+        }
+        fputc('\n',outfp_);
+    }
     BrowseHandleFlow browsehandleflow_;
+    openlcb::MemoryConfigClient memClient_;
+    std::string filename_;
+    FILE *outfp_;
     BarrierNotifiable bn_;
-    bool needWriteDB_;
     openlcb::WriteHelper write_helpers[3];
     ScanState_t currentState_;
     size_t added_;
