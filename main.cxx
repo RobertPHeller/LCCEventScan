@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260307.1512>
+//  Last Modified : <260309.1420>
 //
 //  Description	
 //
@@ -234,9 +234,9 @@ int appl_main(int argc, char *argv[])
     {
         LOG(FATAL,"Not connected to a CAN network!");
     }
-    NetworkEventScan::NetworkEventScan 
-          healthScan(stack.node(),
-                     stack.service(),
+    Executor<1> netscan_executor("netscan_executor", 0, 8192);
+    NetworkEventScan::NetworkEventScanThread
+          networkScan(&netscan_executor,stack.node(),
                      stack.memory_config_handler(),
                      argv[optind]);
     //healthScan.ScanNetwork();

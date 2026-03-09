@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260308.2225>
+//  Last Modified : <260309.1420>
 //
 //  Description	
 //
@@ -62,6 +62,7 @@
 #include <map>
 #include <algorithm>
 #include <functional>
+#include <stack>
 #include <csv.h>
 #include <libxml++/libxml++.h>
 
@@ -108,11 +109,8 @@ struct NetworkNodeDatabaseEntry {
     }
 };
 
-
-
 class NetworkEventScan : public StateFlowBase
 {
-private:
 public:
     NetworkEventScan(openlcb::Node *node, Service *service, 
                      openlcb::MemoryConfigHandler *memCfgHandler,
@@ -120,10 +118,10 @@ public:
           : StateFlowBase(service)
           , timer_(this)
     , node_(node)
-    , service_(service)
     , browsehandleflow_(node,service,this)
     , memClient_(node,memCfgHandler)
     , filename_(filename)
+    /*, processNode_(service,memClient_,MEMBuffer_)*/
     , currentState_(Init)
     , added_(0)
     , missing_(0)
@@ -176,7 +174,6 @@ private:
     NodeDB_t NodeDB_;
     StateFlowTimer timer_;
     openlcb::Node *node_;
-    Service *service_;
     class BrowseHandleFlow : public StateFlowBase
     {
     public:
@@ -326,10 +323,76 @@ private:
     static constexpr unsigned CDIBLOCKSIZE = 1024;
     std::string filename_;
     FILE *outfp_;
-    string lastTextBeforeEV_;
-    void processNode_(const xmlpp::Node* n,int space,uint32_t &address,string prefix="");
-    uint32_t segmentnumber_;
-    BarrierNotifiable bn_;
+    xmlpp::DomParser parser_;
+    uint32_t address_{0};
+    unsigned segmentnumber_{0};
+    void processNode_(xmlpp::Node const* n,int space,string prefix);
+#if 0
+    struct ProcessNodeMessage : public CallableFlowRequestBase {
+        xmlpp::Node const* rootNode;
+        FILE *outfp;
+        void reset(xmlpp::Node const* rootNode,FILE *outfp)
+        {
+            this->rootNode = rootNode;
+            this->outfp = outfp;
+        }
+    };
+    typedef StateFlow<Buffer<ProcessNodeMessage>, QList<1>> ProcessNodeBase;
+    class ProcessNode : public ProcessNodeBase
+    {
+    public:
+        ProcessNode(Service *service,
+                    openlcb::MemoryConfigClient &memClient,
+                    Buffer<openlcb::MemoryConfigClientRequest> *MEMBuffer)
+                    : ProcessNodeBase(service)
+              , memClient_(memClient)
+              , MEMBuffer_(MEMBuffer)
+              , address_(0)
+              , segmentnumber_(0)
+        {
+        }
+    private:
+        xmlpp::Node const* rootNode_;
+        openlcb::MemoryConfigClient &memClient_;
+        Buffer<openlcb::MemoryConfigClientRequest> *MEMBuffer_;
+        FILE *outfp_;
+        uint32_t address_;
+        unsigned segmentnumber_;
+        typedef struct ProcessNodeStackElement {
+            xmlpp::Node const* n;
+            int space;
+            string prefix;
+            const xmlpp::Node::NodeList children;
+            xmlpp::Node::NodeList::const_iterator child;
+            ProcessNodeStackElement(xmlpp::Node const* n,
+                                    int space,
+                                    string prefix)
+                        : n(n)
+                  , space(space)
+                  , prefix(prefix)
+                  , children(xmlpp::Node::NodeList())
+                  , child(children.end())
+            {
+            }
+            ProcessNodeStackElement(xmlpp::Node const* n,
+                                    int space,
+                                    string prefix,
+                                    const xmlpp::Node::NodeList children,
+                                    const xmlpp::Node::NodeList::const_iterator child)
+                        : n(n)
+                  , space(space)
+                  , prefix(prefix)
+                  , children(children)
+                  , child(child)
+            {
+            }
+        } ProcessNodeStackElement_t;
+        std::stack<ProcessNodeStackElement> processElementStack_;
+        virtual Action entry();
+        Action process();
+    };
+    ProcessNode processNode_;
+#endif
     openlcb::WriteHelper write_helpers[3];
     ScanState_t currentState_;
     size_t added_;
@@ -337,6 +400,23 @@ private:
     size_t found_;
 };
           
+class NetworkEventScanThread : public Service
+{
+public:
+    NetworkEventScanThread(ExecutorBase *executor, openlcb::Node *node,
+                           openlcb::MemoryConfigHandler *memCfgHandler,
+                           const char *filename)
+          : Service(executor)
+    , networkEventScan_(node,this,memCfgHandler,filename)
+    {
+    }
+    ~NetworkEventScanThread()
+    {
+    }
+private:
+    NetworkEventScan networkEventScan_;
+};
+
           
 }
 #endif // __NETWORKHEALTHSCAN_HXX

@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260308.2257>
+//  Last Modified : <260309.1441>
 //
 //  Description	
 //
@@ -299,18 +299,15 @@ StateFlowBase::Action NetworkEventScan::gotCDI()
     LOG(INFO,"[NetworkEventScan] gotCDI(): CDI_ is '%s'",CDI_.c_str());
     LOG(INFO,"[NetworkEventScan] gotCDI(): CDI_.size() is %ld", CDI_.size());
 #endif
-    xmlpp::DomParser parser;
     try {
-        parser.set_throw_messages(true);
-        parser.parse_memory(CDI_);
-        if (parser)
+        parser_.set_throw_messages(true);
+        parser_.parse_memory(CDI_);
+        if (parser_)
         {
 #ifdef DEBUG
             LOG(INFO,"[NetworkEventScan] gotCDI(): CDI Parse successful");
 #endif
-            segmentnumber_ = 0;
-            uint32_t address = 0;
-            processNode_(parser.get_document()->get_root_node(),-1,address);
+            processNode_(parser_.get_document()->get_root_node(),-1,"");
         }
     }
     catch (const xmlpp::exception& ex)
@@ -320,7 +317,6 @@ StateFlowBase::Action NetworkEventScan::gotCDI()
     return call_immediately(STATE(NextNode));
 }
 
-#if 1
 static string reformatEventId(string &payload)
 {
     string result = "";
@@ -333,18 +329,16 @@ static string reformatEventId(string &payload)
     }
     return result;
 }
-#endif
 
 void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
-                                    uint32_t &address,string prefix)
+                                    string prefix)
 {
-    LOG(INFO,"[NetworkEventScan] processNode_('%s',%d,%d,'%s')",n->get_name().c_str(),space,address,prefix.c_str());
     if (n->get_name() == "cdi")
     {
         const xmlpp::Node::NodeList segs = n->get_children("segment");
         for (auto s = segs.begin(); s != segs.end(); s++)
         {
-            processNode_(*s,space,address,prefix);
+            processNode_(*s,space,prefix);
         }
               
     }
@@ -362,11 +356,11 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
         //LOG(INFO,"[NetworkEventScan] processNode_(): originattr is %p",originattr);
         if (originattr != nullptr)
         {
-            address = atol(originattr->get_value().c_str());
+            address_ = atol(originattr->get_value().c_str());
         }
         else
         {
-            address = 0;
+            address_ = 0;
         }
         const xmlpp::Node* name = n->get_first_child ( "name" );
         //LOG(INFO,"[NetworkEventScan] processNode_(): name is %p",name);
@@ -391,7 +385,7 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
             //LOG(INFO,"[NetworkEventScan] processNode_(): *c is %p",*c);
             if ((*c)->get_name() == "name" ||
                 (*c)->get_name() == "description") continue;
-            processNode_(*c,space,address,prefix);
+            processNode_(*c,space,prefix);
         }
     }
     else if (n->get_name() == "group")
@@ -422,7 +416,7 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
             name = nodeText->get_content();
         }
         string repnamefmt = "." + name + "(%d)";
-        address += offset;
+        address_ += offset;
         if (replication > 1)
         {
             for (unsigned i = 0; i < replication; i++)
@@ -438,7 +432,7 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
                         (*c)->get_name() == "hints") continue;
                     char buffer[128];
                     snprintf(buffer,sizeof(buffer),repnamefmt.c_str(),i);
-                    processNode_(*c,space,address,prefix + buffer);
+                    processNode_(*c,space,prefix + buffer);
                 }
             }
         }
@@ -453,7 +447,7 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
                     (*c)->get_name() == "description" ||
                     (*c)->get_name() == "repname" ||
                     (*c)->get_name() == "hints") continue;
-                processNode_(*c,space,address,prefix + "." + name);
+                processNode_(*c,space,prefix + "." + name);
             }
         }
     }
@@ -467,7 +461,7 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
         {
             offset = atol(originattr->get_value().c_str());
         }
-        address += offset;
+        address_ += offset;
         string name = "";
         const xmlpp::Node* nameNode = n->get_first_child ( "name" );
         //LOG(INFO,"[NetworkEventScan] processNode_(): nameNode is %p",name);
@@ -490,18 +484,15 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
             //LOG(INFO,"[NetworkEventScan] processNode_(): nodeText = %p",nodeText);
             description = nodeText->get_content();
         }
+        
         unsigned size = 8;
-        MEMBuffer_ = memClient_.alloc();
-        MEMBuffer_->data()->reset(openlcb::MemoryConfigClientRequest::READ_PART,
-                                  openlcb::NodeHandle(currentNode_->first), 
-                                  space,address,size);
-        SyncNotifiable notifiable;
-        MEMBuffer_->data()->done.reset(&notifiable);
-        MEMBuffer_->ref();
-        memClient_.send(MEMBuffer_);
-        notifiable.wait_for_notification();
-        string eventidstring = reformatEventId(MEMBuffer_->data()->payload);
-        MEMBuffer_->unref();
+        uint8_t spacearg = space;
+        auto buff = invoke_flow(&memClient_,
+                                openlcb::MemoryConfigClientRequest::READ_PART,
+                                openlcb::NodeHandle(currentNode_->first), 
+                                spacearg,address_,size);
+        string eventidstring = reformatEventId(buff->data()->payload);
+        buff->unref();
         csv_fwrite(outfp_,eventidstring.c_str(),eventidstring.size());
         fputc(',',outfp_);
         csv_fwrite(outfp_,name.c_str(),name.size());
@@ -518,10 +509,28 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
         fputc(',',outfp_);
         csv_fwrite(outfp_,"",0);
         fputc('\n',outfp_);
+        address_ += size;
     }
-    else if (n->get_name() == "text")
+    else if (n->get_name() == "int" ||
+             n->get_name() == "string")
     {
-        
+        unsigned offset = 0;
+        unsigned size = 1;
+        auto nodeElement = dynamic_cast<const xmlpp::Element*>(n);
+        auto originattr = nodeElement->get_attribute("origin");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): originattr is %p",originattr);
+        if (originattr != nullptr)
+        {
+            offset = atol(originattr->get_value().c_str());
+        }
+        address_ += offset;
+        auto sizeattr = nodeElement->get_attribute("size");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): sizeattr is %p",sizeattr);
+        if (sizeattr != nullptr)
+        {
+            size = atol(sizeattr->get_value().c_str());
+        }
+        address_ += size;
     }
     else
     {
