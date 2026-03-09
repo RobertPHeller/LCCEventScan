@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260307.1523>
+//  Last Modified : <260308.2257>
 //
 //  Description	
 //
@@ -54,6 +54,7 @@ static const char rcsid[] = "@(#) : $Id$";
 #include "openlcb/NodeBrowser.hxx"
 #include "openlcb/SNIPClient.hxx"
 #include "openlcb/PIPClient.hxx"
+#include "openlcb/MemoryConfigClient.hxx"
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -143,8 +144,6 @@ void NetworkEventScan::BrowseHandleFlow::browseCallback_(openlcb::NodeID nodeid)
     {
 #ifdef DEBUG
         LOG(INFO,"[NetworkEventScan::BrowseHandleFlow] browseCallback_(): parent_->CurrentState() is %d",parent_->CurrentState() );
-#endif
-#ifdef DEBUG
         LOG(INFO,"[NetworkEventScan::BrowseHandleFlow] browseCallback_(): busy_ is %d",busy_);
 #endif
         if (parent_->CurrentState() == Init && !busy_)
@@ -174,6 +173,7 @@ void NetworkEventScan::BrowseHandleFlow::browseCallback_(openlcb::NodeID nodeid)
         pendingNodeIDs_.insert(newitem);
 #ifdef DEBUG
         LOG(INFO,"[NetworkEventScan::BrowseHandleFlow] browseCallback_(): pendingNodeIDs_ countains %ld elements",pendingNodeIDs_.pending());
+        LOG(INFO,"[NetworkEventScan::BrowseHandleFlow] browseCallback_(): busy_ is %d",busy_);
 #endif
         if (!busy_) notify();
     }
@@ -206,19 +206,15 @@ StateFlowBase::Action NetworkEventScan::node_loop_start()
     LOG(INFO, "[NetworkEventScan] node_loop_start()");
 #endif
     currentState_ = ScanComplete;
+#ifdef DEBUG
     for (auto n = NodeDB_.begin();n != NodeDB_.end(); n++)
     {
         openlcb::NodeID nid = n->first;
         NetworkNodeDatabaseEntry node = n->second;
-//#ifdef DEBUG
         LOG(INFO, "[NetworkEventScan] node_loop_start(): 0X%012lX: manufacturer is '%s', model = '%s', softwareVersion = '%s', hardwareVersion = '%s', name = '%s', description = '%s'",nid,node.manufacturer.c_str(),node.model.c_str(),node.softwareVersion.c_str(),node.hardwareVersion.c_str(),node.name.c_str(),node.description.c_str());
-//#endif
     }
+#endif
     currentNode_ = NodeDB_.begin();
-    if (currentNode_ == NodeDB_.end())
-    {
-        ::exit(1);
-    }
     outfp_ = fopen(filename_.c_str(),"wb");
     writeHeadings_();
     return call_immediately(STATE(start_load_CDI));
@@ -240,11 +236,304 @@ const char * NetworkEventScan::headings_[10] = {
 
 StateFlowBase::Action NetworkEventScan::start_load_CDI()
 {
-    
-    fclose(outfp_);
-    ::exit(0);
-    return exit(); // place holder
+    if (currentNode_ == NodeDB_.end())
+    {
+        fclose(outfp_);
+        ::exit(0);
+    }
+#ifdef DEBUG
+    LOG(INFO,"[NetworkEventScan] start_load_CDI(): currentNode_->first is 0X%012lX",currentNode_->first);
+#endif
+    CDI_ = "";
+    CDI_Offset = 0;
+    MEMBuffer_ = memClient_.alloc(); //get_allocation_result(&memClient_);
+    MEMBuffer_->data()->reset(openlcb::MemoryConfigClientRequest::READ_PART, 
+                              openlcb::NodeHandle(currentNode_->first), 
+                              CDISPACE,CDI_Offset,CDIBLOCKSIZE);
+    MEMBuffer_->data()->done.reset(this);
+    MEMBuffer_->ref();
+    memClient_.send(MEMBuffer_);
+#ifdef DEBUG
+    LOG(INFO,"[NetworkEventScan] start_load_CDI(): memClient_.send(%p) called",MEMBuffer_);
+#endif
+    return wait_and_call(STATE(gotCDIBlock));
 }
+
+StateFlowBase::Action NetworkEventScan::gotCDIBlock()
+{
+#ifdef DEBUG
+    LOG(INFO,"[NetworkEventScan] gotCDIBlock(): MEMBuffer_->data()->resultCode is %d",MEMBuffer_->data()->resultCode);
+    LOG(INFO,"[NetworkEventScan] gotCDIBlock(): MEMBuffer_->data()->payload is %s",MEMBuffer_->data()->payload.c_str());
+#endif
+    CDI_ += MEMBuffer_->data()->payload;
+    MEMBuffer_->unref();
+    MEMBuffer_ = nullptr;
+    auto z = CDI_.find('\0',CDI_Offset);
+#ifdef DEBUG
+    LOG(INFO,"[NetworkEventScan] gotCDIBlock(): z = %ld", z);
+#endif
+    if (z == std::string::npos)
+    {
+        CDI_Offset += CDIBLOCKSIZE;
+        MEMBuffer_ = memClient_.alloc(); //get_allocation_result(&memClient_);`
+        MEMBuffer_->data()->reset(openlcb::MemoryConfigClientRequest::READ_PART, 
+                                  openlcb::NodeHandle(currentNode_->first), 
+                                  CDISPACE,CDI_Offset,CDIBLOCKSIZE);
+        MEMBuffer_->data()->done.reset(this);
+        MEMBuffer_->ref();
+        memClient_.send(MEMBuffer_);
+#ifdef DEBUG
+        LOG(INFO,"[NetworkEventScan] gotCDIBlock(): memClient_.send(%p) called",MEMBuffer_);
+#endif
+        return wait_and_call(STATE(gotCDIBlock));
+    }
+    else
+    {
+        return call_immediately(STATE(gotCDI));
+    }
+}
+
+StateFlowBase::Action NetworkEventScan::gotCDI()
+{
+#ifdef DEBUG
+    LOG(INFO,"[NetworkEventScan] gotCDI(): CDI_ is '%s'",CDI_.c_str());
+    LOG(INFO,"[NetworkEventScan] gotCDI(): CDI_.size() is %ld", CDI_.size());
+#endif
+    xmlpp::DomParser parser;
+    try {
+        parser.set_throw_messages(true);
+        parser.parse_memory(CDI_);
+        if (parser)
+        {
+#ifdef DEBUG
+            LOG(INFO,"[NetworkEventScan] gotCDI(): CDI Parse successful");
+#endif
+            segmentnumber_ = 0;
+            uint32_t address = 0;
+            processNode_(parser.get_document()->get_root_node(),-1,address);
+        }
+    }
+    catch (const xmlpp::exception& ex)
+    {
+        LOG(WARNING,"[NetworkEventScan] gotCDI(): failed to parse CDI for node 0X%012lX: %s",currentNode_->first,ex.what() );
+    }
+    return call_immediately(STATE(NextNode));
+}
+
+#if 1
+static string reformatEventId(string &payload)
+{
+    string result = "";
+    for (string::size_type i = 0; i < payload.size(); i++)
+    {
+        char buffer[8];
+        snprintf(buffer,sizeof(buffer),"%02X",(uint8_t)payload[i]);
+        if (i > 0) result += ".";
+        result += buffer;
+    }
+    return result;
+}
+#endif
+
+void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
+                                    uint32_t &address,string prefix)
+{
+    LOG(INFO,"[NetworkEventScan] processNode_('%s',%d,%d,'%s')",n->get_name().c_str(),space,address,prefix.c_str());
+    if (n->get_name() == "cdi")
+    {
+        const xmlpp::Node::NodeList segs = n->get_children("segment");
+        for (auto s = segs.begin(); s != segs.end(); s++)
+        {
+            processNode_(*s,space,address,prefix);
+        }
+              
+    }
+    else if (n->get_name() == "segment")
+    {
+        auto nodeElement = dynamic_cast<const xmlpp::Element*>(n);
+        segmentnumber_++;
+        auto spaceattr = nodeElement->get_attribute("space");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): spaceattr is %p",spaceattr);
+        if (spaceattr != nullptr)
+        {
+            space = atol(spaceattr->get_value().c_str());
+        }
+        auto originattr = nodeElement->get_attribute("origin");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): originattr is %p",originattr);
+        if (originattr != nullptr)
+        {
+            address = atol(originattr->get_value().c_str());
+        }
+        else
+        {
+            address = 0;
+        }
+        const xmlpp::Node* name = n->get_first_child ( "name" );
+        //LOG(INFO,"[NetworkEventScan] processNode_(): name is %p",name);
+        if (name != nullptr)
+        {
+            const xmlpp::Node* nc = name->get_first_child ( );
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nc = %p",nc);
+            const auto nodeText = dynamic_cast<const xmlpp::TextNode*>(nc);
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nodeText = %p",nodeText);
+            prefix = nodeText->get_content();
+        }
+        else
+        {
+            char buffer[16];
+            snprintf(buffer,sizeof(buffer),"seg%d",segmentnumber_);
+            prefix = buffer;
+        }
+        const xmlpp::Node::NodeList children = n->get_children();
+        //LOG(INFO,"[NetworkEventScan] processNode_(): children.size() is %ld",children.size());
+        for (auto c = children.begin(); c != children.end(); c++)
+        {
+            //LOG(INFO,"[NetworkEventScan] processNode_(): *c is %p",*c);
+            if ((*c)->get_name() == "name" ||
+                (*c)->get_name() == "description") continue;
+            processNode_(*c,space,address,prefix);
+        }
+    }
+    else if (n->get_name() == "group")
+    {
+        auto nodeElement = dynamic_cast<const xmlpp::Element*>(n);
+        unsigned offset = 0;
+        auto originattr = nodeElement->get_attribute("origin");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): originattr is %p",originattr);
+        if (originattr != nullptr)
+        {
+            offset = atol(originattr->get_value().c_str());
+        }
+        auto replicationattr = nodeElement->get_attribute("replication");
+        unsigned replication = 1;
+        if (replicationattr != nullptr)
+        {
+            replication = atol(replicationattr->get_value().c_str());
+        }
+        string name = "";
+        const xmlpp::Node* nameNode = n->get_first_child ( "name" );
+        //LOG(INFO,"[NetworkEventScan] processNode_(): nameNode is %p",name);
+        if (nameNode != nullptr)
+        {
+            const xmlpp::Node* nc = nameNode->get_first_child ( );
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nc = %p",nc);
+            const auto nodeText = dynamic_cast<const xmlpp::TextNode*>(nc);
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nodeText = %p",nodeText);
+            name = nodeText->get_content();
+        }
+        string repnamefmt = "." + name + "(%d)";
+        address += offset;
+        if (replication > 1)
+        {
+            for (unsigned i = 0; i < replication; i++)
+            {
+                const xmlpp::Node::NodeList children = n->get_children();
+                //LOG(INFO,"[NetworkEventScan] processNode_(): children.size() is %ld",children.size());
+                for (auto c = children.begin(); c != children.end(); c++)
+                {
+                    //LOG(INFO,"[NetworkEventScan] processNode_(): *c is %p",*c);
+                    if ((*c)->get_name() == "name" ||
+                        (*c)->get_name() == "description" ||
+                        (*c)->get_name() == "repname" ||
+                        (*c)->get_name() == "hints") continue;
+                    char buffer[128];
+                    snprintf(buffer,sizeof(buffer),repnamefmt.c_str(),i);
+                    processNode_(*c,space,address,prefix + buffer);
+                }
+            }
+        }
+        else
+        {
+            const xmlpp::Node::NodeList children = n->get_children();
+            //LOG(INFO,"[NetworkEventScan] processNode_(): children.size() is %ld",children.size());
+            for (auto c = children.begin(); c != children.end(); c++)
+            {
+                //LOG(INFO,"[NetworkEventScan] processNode_(): *c is %p",*c);
+                if ((*c)->get_name() == "name" ||
+                    (*c)->get_name() == "description" ||
+                    (*c)->get_name() == "repname" ||
+                    (*c)->get_name() == "hints") continue;
+                processNode_(*c,space,address,prefix + "." + name);
+            }
+        }
+    }
+    else if (n->get_name() == "eventid")
+    {
+        auto nodeElement = dynamic_cast<const xmlpp::Element*>(n);
+        unsigned offset = 0;
+        auto originattr = nodeElement->get_attribute("origin");
+        //LOG(INFO,"[NetworkEventScan] processNode_(): originattr is %p",originattr);
+        if (originattr != nullptr)
+        {
+            offset = atol(originattr->get_value().c_str());
+        }
+        address += offset;
+        string name = "";
+        const xmlpp::Node* nameNode = n->get_first_child ( "name" );
+        //LOG(INFO,"[NetworkEventScan] processNode_(): nameNode is %p",name);
+        if (nameNode != nullptr)
+        {
+            const xmlpp::Node* nc = nameNode->get_first_child ( );
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nc = %p",nc);
+            const auto nodeText = dynamic_cast<const xmlpp::TextNode*>(nc);
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nodeText = %p",nodeText);
+            name = nodeText->get_content();
+        }
+        string description = "";
+        const xmlpp::Node* descriptionNode = n->get_first_child ( "description" );
+        //LOG(INFO,"[NetworkEventScan] processNode_(): descriptionNode is %p",descriptionNode);
+        if (descriptionNode != nullptr)
+        {
+            const xmlpp::Node* dc = descriptionNode->get_first_child ( );
+            //LOG(INFO,"[NetworkEventScan] processNode_(): dc = %p",dc);
+            const auto nodeText = dynamic_cast<const xmlpp::TextNode*>(dc);
+            //LOG(INFO,"[NetworkEventScan] processNode_(): nodeText = %p",nodeText);
+            description = nodeText->get_content();
+        }
+        unsigned size = 8;
+        MEMBuffer_ = memClient_.alloc();
+        MEMBuffer_->data()->reset(openlcb::MemoryConfigClientRequest::READ_PART,
+                                  openlcb::NodeHandle(currentNode_->first), 
+                                  space,address,size);
+        SyncNotifiable notifiable;
+        MEMBuffer_->data()->done.reset(&notifiable);
+        MEMBuffer_->ref();
+        memClient_.send(MEMBuffer_);
+        notifiable.wait_for_notification();
+        string eventidstring = reformatEventId(MEMBuffer_->data()->payload);
+        MEMBuffer_->unref();
+        csv_fwrite(outfp_,eventidstring.c_str(),eventidstring.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,name.c_str(),name.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,currentNode_->second.name.c_str(),currentNode_->second.name.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,currentNode_->second.manufacturer.c_str(),currentNode_->second.manufacturer.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,prefix.c_str(),prefix.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,description.c_str(),description.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,"",0);
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,"",0);
+        fputc('\n',outfp_);
+    }
+    else if (n->get_name() == "text")
+    {
+        
+    }
+    else
+    {
+    }
+}
+
+StateFlowBase::Action NetworkEventScan::NextNode()
+{
+    currentNode_++;
+    return call_immediately(STATE(start_load_CDI));
+}          
+
 
 StateFlowBase::Action NetworkEventScan::BrowseHandleFlow::SNIPProcess::entry()
 {

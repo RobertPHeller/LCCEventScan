@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260307.1524>
+//  Last Modified : <260308.2225>
 //
 //  Description	
 //
@@ -63,6 +63,7 @@
 #include <algorithm>
 #include <functional>
 #include <csv.h>
+#include <libxml++/libxml++.h>
 
 namespace NetworkEventScan
 {
@@ -142,6 +143,9 @@ public:
     virtual Action entry();
     Action node_loop_start();
     Action start_load_CDI();
+    Action gotCDIBlock();
+    Action gotCDI();
+    Action NextNode();
     typedef std::map<openlcb::NodeID,NetworkNodeDatabaseEntry> NodeDB_t;
     typedef NodeDB_t::const_iterator NodeDB_ConstIterator;
     typedef NodeDB_t::iterator NodeDB_Iterator;
@@ -315,8 +319,16 @@ private:
     }
     BrowseHandleFlow browsehandleflow_;
     openlcb::MemoryConfigClient memClient_;
+    Buffer<openlcb::MemoryConfigClientRequest> *MEMBuffer_{nullptr};
+    string CDI_;
+    unsigned CDI_Offset;
+    static constexpr uint8_t CDISPACE = 0xff;
+    static constexpr unsigned CDIBLOCKSIZE = 1024;
     std::string filename_;
     FILE *outfp_;
+    string lastTextBeforeEV_;
+    void processNode_(const xmlpp::Node* n,int space,uint32_t &address,string prefix="");
+    uint32_t segmentnumber_;
     BarrierNotifiable bn_;
     openlcb::WriteHelper write_helpers[3];
     ScanState_t currentState_;
