@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260309.1420>
+//  Last Modified : <260309.1457>
 //
 //  Description	
 //
@@ -89,7 +89,7 @@ extern const openlcb::SimpleNodeStaticValues SNIP_STATIC_DATA = {
 
 void usage(const char *e)
 {
-    fprintf(stderr, "Usage: %s [-n nodeid] [-u upstream_host] [-q upstream_port] [-c can_socketname] [-t usbtty]\n",e);
+    fprintf(stderr, "Usage: %s [-n nodeid] [-u upstream_host] [-q upstream_port] [-c can_socketname] [-t usbtty] outputfile\n",e);
     fprintf(stderr, "\n\n");
     fprintf(stderr, "\nOptions:\n");
     fprintf(stderr, "\t-n nodeid is the node id, as a 12 hex digit number (optionally with colons between pairs of hex digits.\n");
