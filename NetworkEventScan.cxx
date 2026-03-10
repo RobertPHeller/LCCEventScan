@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260309.1441>
+//  Last Modified : <260310.1200>
 //
 //  Description	
 //
@@ -312,7 +312,8 @@ StateFlowBase::Action NetworkEventScan::gotCDI()
     }
     catch (const xmlpp::exception& ex)
     {
-        LOG(WARNING,"[NetworkEventScan] gotCDI(): failed to parse CDI for node 0X%012lX: %s",currentNode_->first,ex.what() );
+        LOG(WARNING,"[NetworkEventScan] gotCDI(): failed to parse CDI for node %s: %s",
+            utils::node_id_to_string(currentNode_->first).c_str(),ex.what() );
     }
     return call_immediately(STATE(NextNode));
 }
