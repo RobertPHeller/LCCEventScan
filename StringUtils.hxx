@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Sun Dec 18 12:05:25 2022
-//  Last Modified : <230324.0929>
+//  Last Modified : <260309.2045>
 //
 //  Description	
 //
@@ -48,10 +48,16 @@
 
 using std::string;
 
+/** Namespace used to hold a couple of simple string utils for converting
+ * node ids to and from strings.
+ */
 namespace utils
 {
-
+/** Convert a node id to a hexidecimal string representation. */
 string node_id_to_string(uint64_t node_id);
+/** Convert a hexidecimal string representation of a node id to a binary
+ * representation.
+ */
 uint64_t string_to_uint64(const string node_string);
 
 }

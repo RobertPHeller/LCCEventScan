@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260309.1457>
+//  Last Modified : <260309.2041>
 //
 //  Description	
 //
@@ -17,30 +17,79 @@
 //  History
 //	
 /////////////////////////////////////////////////////////////////////////////
-/// @copyright
-///    Copyright (C) 2026  Robert Heller D/B/A Deepwoods Software
-///			51 Locke Hill Road
-///			Wendell, MA 01379-9728
-///
-///    This program is free software; you can redistribute it and/or modify
-///    it under the terms of the GNU General Public License as published by
-///    the Free Software Foundation; either version 2 of the License, or
-///    (at your option) any later version.
-///
-///    This program is distributed in the hope that it will be useful,
-///    but WITHOUT ANY WARRANTY; without even the implied warranty of
-///    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-///    GNU General Public License for more details.
-///
-///    You should have received a copy of the GNU General Public License
-///    along with this program; if not, write to the Free Software
-///    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-/// @file main.cxx
-/// @author Robert Heller
-/// @date 2026-03-05 15:21:27
-/// 
-///
-//////////////////////////////////////////////////////////////////////////////
+/** @copyright
+ *     Copyright (C) 2026  Robert Heller D/B/A Deepwoods Software
+ * 			51 Locke Hill Road
+ * 			Wendell, MA 01379-9728
+ * 
+ *     This program is free software; you can redistribute it and/or modify
+ *     it under the terms of the GNU General Public License as published by
+ *     the Free Software Foundation; either version 2 of the License, or
+ *     (at your option) any later version.
+ * 
+ *     This program is distributed in the hope that it will be useful,
+ *     but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *     GNU General Public License for more details.
+ * 
+ *     You should have received a copy of the GNU General Public License
+ *     along with this program; if not, write to the Free Software
+ *     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *  @file main.cxx
+ * 
+ *  Main file for the LCC Event scanner
+ * 
+ *  @author Robert Heller
+ *  @date 2026-03-05 15:21:27
+ *  @page LCCEventScan LCC Event Scan Command Line
+ * 
+ * @section SYNOPSIS SYNOPSIS
+ * 
+ * LCCEventScan [options] outputfile
+ * 
+ * @section DESCRIPTION DESCRIPTION
+ * 
+ * This program will scan all of the nodes on a LCC Network and for all
+ * nodes that provide both the CDI and Event Exchange protocols will read
+ * the CDI and extract all of the EventIDs defined and create a CSV file
+ * containing those Event IDs, along with various bits of info relating to 
+ * them.
+ * 
+ * @section OPTIONS OPTIONS
+ * 
+ * @arg -n nodeid is the node id, as a 12 hex digit number (optionally with 
+ * colons between pairs of hex digits).  Defaults to 05:01:01:01:22:00.
+ * @arg -u upstream_host is the host name for an upstream hub.
+ * @arg -q upstream_port is the port number for the upstream hub. Defaults
+ * to 12021.
+ * @arg -c can_socketname is the name of the CAN socket.
+ * @arg -t cantty USB/TTY port of a USB/GC<=>CAN device, such as a RR-CitKits 
+ * LCC Buffer-USB.
+ * @par
+ * 
+ * At least one of the connection options needs to be specified.  There is no
+ * default connection option.
+ * 
+ * @section PARAMETERS PARAMETERS
+ * 
+ * The name of the output file.  This parameter is required.
+ * 
+ *  @section FILES FILES
+ * None
+ * 
+ * @mainpage Introduction
+ * 
+ * This program was inspired by an E-Mail message on the LCC groups.io list
+ * posted by Dwight Kelly.  This program scans a LCC network looking for 
+ * active nodes that support the CDI and Event Transfer protocols.  It 
+ * collects the SNIP infor for these nodes (make, model, hardware and software
+ *  versions, names and descriptions then goes through this list of nodes
+ * fetching the node's CDI and then collecting all of the nodes EventIds. It
+ * creates a CSV file containing the EventIds, with the information about
+ * the EventIds.  This file can be processed by other software to possibly
+ * automate the process of configuring the nodes.
+ * 
+ */
 
 static const char rcsid[] = "@(#) : $Id$";
 
@@ -201,10 +250,10 @@ void parse_args(int argc, char *argv[])
     }
 }
 /** Entry point to application.
- *  * @param argc number of command line arguments
- *  * @param argv array of command line arguments
- *  * @return 0, should never return
- *  */
+ * @param argc number of command line arguments
+ * @param argv array of command line arguments
+ * @return 0, should never return
+ */
 int appl_main(int argc, char *argv[])
 {
     // Parse command line.

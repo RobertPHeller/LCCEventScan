@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260309.1420>
+//  Last Modified : <260309.2055>
 //
 //  Description	
 //
@@ -66,18 +66,41 @@
 #include <csv.h>
 #include <libxml++/libxml++.h>
 
+
+/** Namespace to hold all of the working code. */
 namespace NetworkEventScan
 {
+/** Data structure that holds the SNIP information for a node.
+ */
 struct NetworkNodeDatabaseEntry {
     typedef enum {Missing=0, Found, New} Status_t;
+    /** The node id. */
     const openlcb::NodeID node_id;
+    /** The manufacturer of the node. */
     string manufacturer;
+    /** The model of the node. */
     string model;
+    /** The software version. */
     string softwareVersion;
+    /** The hardware version. */
     string hardwareVersion;
+    /** The user supplied name of the node. */
     string name;
+    /** The user supplied description of the node. */ 
     string description;
+    /** The node's status. */
     Status_t status;
+    /** Default constructor, with default values.
+     * @param node_id_ The node id.
+     * @param manufacturer_ The manufacturer of the node.
+     * @param model_ The model of the node.
+     * @param softwareVersion_ The software version.
+     * @param hardwareVersion_ The hardware version. 
+     * @param name_ The user supplied name of the node.
+     * @param description_ The user supplied description of the node.
+     * @param status_ The node's status.
+     */
+       
     NetworkNodeDatabaseEntry(openlcb::NodeID node_id_=0,
                              string manufacturer_="",
                              string model_="",
@@ -96,6 +119,9 @@ struct NetworkNodeDatabaseEntry {
           , status(status_)
     {
     }
+    /** Copy constructor.  Create a new entry from another entry.
+     * @param other The other entry.
+     */
     NetworkNodeDatabaseEntry(const NetworkNodeDatabaseEntry& other)
                 : node_id(other.node_id)
           , manufacturer(other.manufacturer)
@@ -109,6 +135,10 @@ struct NetworkNodeDatabaseEntry {
     }
 };
 
+/** Main network event scanner.
+ * This class is the workhorse of the application.  It uses a collection of
+ * internal sub-classes to scan the network and create the result file.
+ */
 class NetworkEventScan : public StateFlowBase
 {
 public:

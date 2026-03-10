@@ -15,5 +15,5 @@ refman.pdf: doc/latex/refman.pdf
 	cp doc/latex/refman.pdf ./
 	
 
-doc/latex/refman.pdf: 
+doc/latex/refman.pdf: FORCE
 	$(MAKE) -c doc pdf
