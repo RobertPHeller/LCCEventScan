@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260309.2055>
+//  Last Modified : <260310.0907>
 //
 //  Description	
 //
@@ -142,6 +142,12 @@ struct NetworkNodeDatabaseEntry {
 class NetworkEventScan : public StateFlowBase
 {
 public:
+    /** Constructor: create a NetworkEventScan instance.
+     * @param node The node object.
+     * @param service The service to run under.
+     * @param memCfgHandler The memory config handler.
+     * @param filename The file name to write the results to.
+     */
     NetworkEventScan(openlcb::Node *node, Service *service, 
                      openlcb::MemoryConfigHandler *memCfgHandler,
                      const char *filename)
@@ -151,16 +157,17 @@ public:
     , browsehandleflow_(node,service,this)
     , memClient_(node,memCfgHandler)
     , filename_(filename)
-    /*, processNode_(service,memClient_,MEMBuffer_)*/
     , currentState_(Init)
     , added_(0)
     , missing_(0)
     , found_(0)
     {
     }
+    /** Destructor: clean up a NetworkEventScan instance. */
     ~NetworkEventScan() 
     {
     }
+    /** Initiate a scan. */ 
     void ScanNetwork()
     {
 #ifdef DEBUG
@@ -168,18 +175,31 @@ public:
 #endif
         start_flow(STATE(entry));
     }
+    /** Entry state for the state machine */
     virtual Action entry();
+    /** Start the node loop. */
     Action node_loop_start();
+    /** Start loading the CDI */
     Action start_load_CDI();
+    /** Got a block of CDI memory. */
     Action gotCDIBlock();
+    /** Got the complete CDI. */
     Action gotCDI();
+    /** Move on to the next node. */
     Action NextNode();
+    /** Map of nodes. */
     typedef std::map<openlcb::NodeID,NetworkNodeDatabaseEntry> NodeDB_t;
+    /** Const iterator into the map of nodes. */
     typedef NodeDB_t::const_iterator NodeDB_ConstIterator;
+    /** Iterator into the map of nodes. */
     typedef NodeDB_t::iterator NodeDB_Iterator;
+    /** Beginning of the node map. */
     NodeDB_ConstIterator NodeDB_Begin() const {return NodeDB_.begin();}
+    /** End of the node map. */
     NodeDB_ConstIterator NodeDB_End() const {return NodeDB_.end();}
+    /** Find a node by its node id. */
     NodeDB_Iterator NodeDB_Find(openlcb::NodeID nodeid) {return NodeDB_.find(nodeid);}
+    /** Remove a node by its id. */
     void NodeDB_Remove(openlcb::NodeID nodeid)
     {
         auto found = NodeDB_.find(nodeid);
@@ -188,18 +208,20 @@ public:
             NodeDB_.erase(found);
         }
     }
-    NodeDB_ConstIterator currentNode_;
+    /** Scan states, */
     typedef enum {Init=0, Scanning, ScanComplete} ScanState_t;
+    /** Return the current scan state. */
     ScanState_t CurrentState() const {return currentState_;}
+    /** Return the total number of nodes. */
     size_t Total() const {return NodeDB_.size();}
-    size_t Added() const {return added_;}
-    size_t Missing() const {return missing_;}
-    size_t Found() const {return found_;}
+    /** Insert a node into the map. */
     inline void insertDB(openlcb::NodeID nid,NetworkNodeDatabaseEntry entry)
     {
         NodeDB_.insert(std::make_pair(nid,entry));
     }
 private:
+    /** The node we are currently working on. */
+    NodeDB_ConstIterator currentNode_;
     static constexpr const long long BROWSETIMEOUT = MSEC_TO_NSEC(20000);
     NodeDB_t NodeDB_;
     StateFlowTimer timer_;
@@ -429,10 +451,17 @@ private:
     size_t missing_;
     size_t found_;
 };
-          
+
+/** Class to hold a fresh thread to run the Network Event Scan in. */
 class NetworkEventScanThread : public Service
 {
 public:
+    /** Constructor: create a new thread to run the Network Event Scan in.
+     * @param executor The thread object.
+     * @param node The node object.
+     * @param memCfgHandler The memory config handler.
+     * @param filename The file name to write the results to.
+     */ 
     NetworkEventScanThread(ExecutorBase *executor, openlcb::Node *node,
                            openlcb::MemoryConfigHandler *memCfgHandler,
                            const char *filename)
@@ -440,6 +469,7 @@ public:
     , networkEventScan_(node,this,memCfgHandler,filename)
     {
     }
+    /** Destructor: clean things up. */
     ~NetworkEventScanThread()
     {
     }
