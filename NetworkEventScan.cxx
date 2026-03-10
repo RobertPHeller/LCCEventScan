@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260310.1200>
+//  Last Modified : <260310.1437>
 //
 //  Description	
 //
@@ -498,7 +498,12 @@ void NetworkEventScan::processNode_(xmlpp::Node const* n,int space,
         fputc(',',outfp_);
         csv_fwrite(outfp_,name.c_str(),name.size());
         fputc(',',outfp_);
+        string nid = utils::node_id_to_string(currentNode_->first);
+        csv_fwrite(outfp_,nid.c_str(),nid.size());
+        fputc(',',outfp_);
         csv_fwrite(outfp_,currentNode_->second.name.c_str(),currentNode_->second.name.size());
+        fputc(',',outfp_);
+        csv_fwrite(outfp_,currentNode_->second.model.c_str(),currentNode_->second.model.size());
         fputc(',',outfp_);
         csv_fwrite(outfp_,currentNode_->second.manufacturer.c_str(),currentNode_->second.manufacturer.size());
         fputc(',',outfp_);
