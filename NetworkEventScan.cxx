@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 14:31:24 2024
-//  Last Modified : <260310.1437>
+//  Last Modified : <260316.0933>
 //
 //  Description	
 //
@@ -124,7 +124,8 @@ StateFlowBase::Action NetworkEventScan::BrowseHandleFlow::gotPIP()
     {
         parent_->NodeDB_Remove(nodeid_);
     }        
-    if (busy_) return wait();
+    //if (busy_) return wait();
+    busy_ = false;
     if (pendingNodeIDs_.empty())
     {
         return wait_and_call(STATE(entry));

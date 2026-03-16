@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : 2026-03-05 15:21:27
-//  Last Modified : <260309.2041>
+//  Last Modified : <260316.0907>
 //
 //  Description	
 //
@@ -128,11 +128,15 @@ bool UseUSBTTy = false;
 const char *usb_gc_port = "/dev/ttyACM0";
 
 
-extern const char *const openlcb::SNIP_DYNAMIC_FILENAME = NULL;
+namespace openlcb
+{
 
-extern const openlcb::SimpleNodeStaticValues SNIP_STATIC_DATA = {
+extern const char *const SNIP_DYNAMIC_FILENAME = NULL;
+
+extern const SimpleNodeStaticValues SNIP_STATIC_DATA = {
     4, "Deepwoods Software", "LCCEventScan", "", "1.0"};
 
+}
 
 // CLI Usage output.
 

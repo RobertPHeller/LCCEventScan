@@ -8,7 +8,7 @@
 //  Author        : $Author$
 //  Created By    : Robert Heller
 //  Created       : Wed Sep 4 12:44:50 2024
-//  Last Modified : <260310.0907>
+//  Last Modified : <260316.0924>
 //
 //  Description	
 //
@@ -242,13 +242,13 @@ private:
         {
             start_flow(STATE(entry));
         }
+#ifdef DEBUG
         virtual void notify() override
         {
-#ifdef DEBUG
             LOG(INFO,"[BrowseHandleFlow] notify()");
-#endif
             StateFlowBase::notify();
         }
+#endif
         void refresh() {browser_.refresh();}
     private:
         void browseCallback_(openlcb::NodeID nodeid);
